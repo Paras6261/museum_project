@@ -977,18 +977,19 @@ html, body {
   position: fixed;
   inset: 0;
   z-index: 800;
-  background-color: #FAF7F0;
-  background-image: radial-gradient(#DCD0B5 1px, transparent 1px);
-  background-size: 22px 22px;
-  display: flex;
+  background-color: #0A0805;
+  display: none;
+  visibility: hidden;
   flex-direction: column;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
 }
 
 .ar-studio-overlay.open {
+  display: flex;
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
 }
