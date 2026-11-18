@@ -303,20 +303,22 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════
-         FULL-SCREEN LIVE CAMERA AR & 3D STUDIO (ZERO LOCATION TRACKING!)
-         Shows the real 3D monument directly through your live camera
-         with tap/drag placement & live 16-monument carousel switcher!
+         MINIMAL FULL-SCREEN LIVE CAMERA AR & 3D VIEWER (ZERO GPS)
+         - Minimal icon-first HUD (no long text clutter)
+         - Single Hide/Show All UI button (👁)
+         - Full View Mode (⛶)
+         - Tap 3D monument -> Non-overlapping History & Details Card
+         - Fix in Place (📌) -> Anchors monument when camera moves
          ═══════════════════════════════════════════════════════════ -->
-    <div id="ar-studio-overlay" class="ar-studio-overlay" role="dialog" aria-modal="true" aria-label="Live Camera AR and 3D Studio">
-      <!-- FULL-SCREEN CAMERA + 3D AR VIEWPORT -->
+    <div id="ar-studio-overlay" class="ar-studio-overlay" role="dialog" aria-modal="true" aria-label="Live Camera AR and 3D Viewer">
       <div class="studio-viewport theme-camera" id="studio-viewport">
-        <!-- Real-Life Live Camera Feed (Video Only — Zero GPS/Location) -->
+        <!-- Real-Life Live Camera Feed (Video Only — Zero GPS) -->
         <video id="ar-camera-video" playsinline autoplay muted></video>
 
-        <!-- Subtle AR Ground Target Ring (shown when placing in camera AR) -->
+        <!-- Subtle Placement Ring (only while placing) -->
         <div class="ar-floor-reticle" id="ar-floor-reticle"></div>
 
-        <!-- Interactive 3D Monument Layer (Transparent over Live Camera) -->
+        <!-- 3D Monument Stage (auto-shifts so History Card never overlaps!) -->
         <div class="model-viewer-stage" id="model-viewer-stage">
           <model-viewer
             id="exhibit-viewer"
@@ -336,133 +338,131 @@
           ></model-viewer>
         </div>
 
-        <!-- Drag / Tap-to-Place Capture Layer (Active in Move/Place Mode) -->
-        <div id="ar-place-layer" class="ar-place-layer" title="Drag or tap anywhere on camera to place the monument"></div>
+        <!-- Tap / Drag Placement Layer (active in Place mode) -->
+        <div id="ar-place-layer" class="ar-place-layer"></div>
 
-        <!-- FLOATING TOP HUD -->
-        <header class="ar-hud-top">
+        <!-- ALWAYS-ACCESSIBLE CORNER TOGGLE: Hide / Show All Icons -->
+        <div class="hud-corner-controls">
+          <button class="icon-fab" id="toggle-fullview-btn" title="Full View Mode">⛶</button>
+          <button class="icon-fab" id="toggle-hide-ui-btn" title="Hide / Show All Icons">👁</button>
+        </div>
+
+        <!-- MINIMAL TOP BAR (Auto-hidden in Hide-UI & Full-View modes) -->
+        <header class="ar-hud-top" id="ar-hud-top">
           <div class="ar-hud-left">
-            <button class="hud-glass-btn" id="studio-back-btn">← GALLERY</button>
-            <div class="hud-monument-pill">
-              <span class="hud-monument-name" id="studio-active-name">🇮🇳 Taj Mahal</span>
-              <span class="hud-monument-sub" id="stage-info-era">1631–1653 CE · MUGHAL EMPIRE</span>
-            </div>
+            <button class="icon-pill-btn" id="studio-back-btn" title="Back to Gallery">←</button>
+            <button class="monument-chip-btn" id="hud-info-chip" title="Tap for Monument History">
+              <span id="studio-active-name">🇮🇳 Taj Mahal</span>
+              <span class="chip-dot" id="cam-status-dot" title="Camera status"></span>
+            </button>
+            <span class="anchor-chip" id="anchor-status-chip" style="display: none;">📌 Fixed</span>
           </div>
 
           <div class="ar-hud-center">
-            <button class="hud-mode-btn active" id="mode-camera-btn">📷 Live Camera AR</button>
-            <button class="hud-mode-btn" id="mode-3d-btn">🧊 3D Studio</button>
-            <button class="hud-mode-btn gold-accent" id="native-ar-btn">📱 Real Floor AR</button>
-            <button class="hud-glass-btn" id="open-mobile-qr-btn" title="Open on Mobile Phone Camera via HTTPS QR">📲 Phone QR</button>
-          </div>
-
-          <div class="ar-hud-right">
-            <div class="studio-privacy-pill" id="cam-live-badge" title="Live Camera Status">
-              ⚪ CAM STANDBY
-            </div>
-            <div class="studio-privacy-pill" title="Strictly Camera Only — Zero GPS or Location Tracking">
-              🔒 NO GPS
-            </div>
+            <button class="icon-mode-btn active" id="mode-camera-btn" title="Live Camera AR">📷</button>
+            <button class="icon-mode-btn" id="mode-3d-btn" title="3D Studio">🧊</button>
+            <button class="icon-mode-btn gold-accent" id="native-ar-btn" title="Real Floor AR (Phone)">📱</button>
+            <button class="icon-mode-btn" id="open-mobile-qr-btn" title="Open on Phone (QR)">📲</button>
           </div>
         </header>
 
-        <!-- Loading Indicator -->
-        <div class="viewer-loading-badge" id="viewer-loading-badge">
-          ⏳ Loading 3D Monument…
-        </div>
+        <!-- Compact Loading Spinner Badge -->
+        <div class="viewer-loading-badge" id="viewer-loading-badge">⏳ Loading…</div>
 
-        <!-- Toast / Status Notice -->
+        <!-- Minimal Transient Toast -->
         <div class="camera-status-toast" id="camera-status-toast"></div>
 
-        <!-- Camera Permission Prompt Card (only visible if camera is off/denied in Camera AR mode) -->
+        <!-- Camera Prompt (Only if camera unavailable/denied in Camera mode) -->
         <div class="camera-prompt-card" id="camera-prompt-card">
           <div class="camera-prompt-icon">📷</div>
-          <h3 id="camera-prompt-title">Enable Your Camera for Real-Life AR</h3>
-          <p id="camera-prompt-desc">
-            Allow camera access to view the 3D monument live in your real surroundings.
-            <strong>No location or GPS is ever tracked.</strong>
-          </p>
+          <h3 id="camera-prompt-title">Camera Access</h3>
+          <p id="camera-prompt-desc">Allow camera to view monuments live.</p>
           <div class="camera-prompt-actions">
-            <button class="hud-mode-btn gold-accent" id="retry-camera-btn">📷 Start Live Camera</button>
-            <button class="hud-glass-btn" id="fallback-3d-btn">🧊 Use 3D Studio Instead</button>
+            <button class="hud-mode-btn gold-accent" id="retry-camera-btn">📷 Allow Camera</button>
+            <button class="hud-glass-btn" id="fallback-3d-btn">🧊 3D View</button>
           </div>
         </div>
 
-        <!-- FLOATING RIGHT SIDE ACTION RAIL (Rotate vs Place, Gyro, Clean View, Camera, Photo) -->
-        <div class="ar-hud-right-rail">
-          <button class="rail-btn active" id="interaction-rotate-btn" title="Drag to rotate 3D monument 360°">
-            <span>🔄</span>
-            <small>Rotate</small>
+        <!-- NON-OVERLAPPING HISTORY & DETAILS CARD (Opens on tapping the 3D monument or ℹ️) -->
+        <aside class="monument-history-card" id="monument-history-card" aria-hidden="true">
+          <div class="history-card-top">
+            <span class="history-era" id="history-era">1631–1653 CE</span>
+            <button class="history-close-btn" id="history-close-btn" title="Close Details">✕</button>
+          </div>
+          <h2 class="history-title" id="history-title">Taj Mahal</h2>
+          <p class="history-loc" id="history-loc">📍 Agra, Uttar Pradesh</p>
+          <div class="history-specs-row">
+            <div class="h-spec">
+              <small>HEIGHT</small>
+              <strong id="history-height">73 Metres</strong>
+            </div>
+            <div class="h-spec">
+              <small>BUILT</small>
+              <strong id="history-built">1631 CE</strong>
+            </div>
+            <div class="h-spec">
+              <small>STATUS</small>
+              <strong id="history-status">UNESCO</strong>
+            </div>
+          </div>
+          <p class="history-desc" id="history-desc"></p>
+          <div class="history-actions">
+            <button class="hud-mini-btn active" id="history-audio-btn">🔊 Listen</button>
+            <span class="history-cat" id="history-cat">Cat. IND-1029</span>
+          </div>
+        </aside>
+
+        <!-- MINIMAL RIGHT ICON RAIL -->
+        <div class="ar-hud-right-rail" id="ar-hud-right-rail">
+          <button class="rail-btn" id="toggle-fix-btn" title="Fix Monument in Place (stays anchored when camera moves)">
+            <span>📌</span>
           </button>
-          <button class="rail-btn" id="interaction-move-btn" title="Tap or drag anywhere on camera to place monument in room">
+          <button class="rail-btn" id="interaction-move-btn" title="Tap/Drag to Move Monument">
             <span>✋</span>
-            <small>Place</small>
           </button>
-          <button class="rail-btn" id="toggle-gyro-btn" title="Use phone gyroscope to look around the monument in real space (No GPS)">
-            <span>🧭</span>
-            <small>Gyro</small>
+          <button class="rail-btn" id="toggle-history-btn" title="Monument History & Details">
+            <span>ℹ️</span>
           </button>
-          <button class="rail-btn active" id="toggle-rotate-btn" title="Toggle gentle auto-spin">
-            <span>⟳</span>
-            <small>Spin</small>
-          </button>
-          <button class="rail-btn" id="toggle-clean-btn" title="Hide guides & dock for pure real-life camera AR view">
-            <span>👁</span>
-            <small>Clean</small>
-          </button>
-          <button class="rail-btn" id="reset-view-btn" title="Center and reset monument size">
-            <span>⌖</span>
-            <small>Reset</small>
-          </button>
-          <button class="rail-btn" id="flip-camera-btn" title="Switch Rear / Front / USB Camera">
+          <button class="rail-btn" id="flip-camera-btn" title="Switch Camera">
             <span>🔁</span>
-            <small>Cam</small>
           </button>
-          <button class="rail-btn" id="mirror-camera-btn" title="Mirror webcam preview">
-            <span>🪞</span>
-            <small>Mirror</small>
+          <button class="rail-btn" id="toggle-controls-pop-btn" title="Size, Spin & Lighting">
+            <span>⚙️</span>
           </button>
-          <button class="rail-btn" id="studio-audio-btn" title="Play Docent Audio Guide">
-            <span>🔊</span>
-            <small>Audio</small>
-          </button>
-          <button class="rail-btn gold" id="snapshot-ar-btn" title="Capture & Save Real-Life AR Photo">
+          <button class="rail-btn gold" id="snapshot-ar-btn" title="Take Photo">
             <span>📸</span>
-            <small>Photo</small>
           </button>
         </div>
 
-        <!-- FLOATING BOTTOM DOCK: Size/Height + Live 16-Monument AR Switcher Carousel -->
-        <div class="ar-hud-bottom" id="ar-hud-bottom">
-          <!-- Compact Quick Controls Strip -->
-          <div class="hud-quick-strip">
-            <div class="hud-sliders">
-              <label class="hud-slider-pill">
-                <span>SIZE</span>
-                <input type="range" id="ar-scale-slider" min="35" max="200" value="100" />
-                <span id="scale-val">100%</span>
-              </label>
-              <label class="hud-slider-pill">
-                <span>HEIGHT</span>
-                <input type="range" id="ar-elev-slider" min="-180" max="180" value="0" />
-                <span id="elev-val">0px</span>
-              </label>
-            </div>
-
-            <!-- Lighting pills (shown only in 3D Studio mode) -->
-            <div class="hud-lighting-group" id="lighting-controls" style="display: none;">
-              <button class="hud-mini-btn active" data-theme="golden">🕯 Golden</button>
-              <button class="hud-mini-btn" data-theme="parchment">☀ Parchment</button>
-              <button class="hud-mini-btn" data-theme="obsidian">🌑 Obsidian</button>
-            </div>
-
-            <div class="hud-picker-header-right">
-              <div class="sidebar-filter-row" id="studio-filter-row"></div>
-              <button class="hud-mini-btn" id="toggle-drawer-btn" title="Hide/Show Monument Picker">▾ Hide List</button>
-            </div>
+        <!-- COMPACT POPOVER FOR SIZE / SPIN / RESET / MIRROR / THEME -->
+        <div class="controls-popover" id="controls-popover">
+          <label class="pop-slider">
+            <span>Size</span>
+            <input type="range" id="ar-scale-slider" min="35" max="200" value="100" />
+            <em id="scale-val">100%</em>
+          </label>
+          <label class="pop-slider">
+            <span>Height</span>
+            <input type="range" id="ar-elev-slider" min="-180" max="180" value="0" />
+            <em id="elev-val">0px</em>
+          </label>
+          <div class="pop-btn-row">
+            <button class="hud-mini-btn active" id="toggle-rotate-btn">⟳ Spin</button>
+            <button class="hud-mini-btn" id="mirror-camera-btn">🪞 Mirror</button>
+            <button class="hud-mini-btn" id="reset-view-btn">⌖ Reset</button>
           </div>
+          <div class="pop-btn-row" id="lighting-controls" style="display: none;">
+            <button class="hud-mini-btn active" data-theme="golden">🕯</button>
+            <button class="hud-mini-btn" data-theme="parchment">☀</button>
+            <button class="hud-mini-btn" data-theme="obsidian">🌑</button>
+          </div>
+        </div>
 
-          <!-- Horizontal Scrollable Monument Picker Carousel -->
+        <!-- MINIMAL BOTTOM MONUMENT STRIP -->
+        <div class="ar-hud-bottom" id="ar-hud-bottom">
+          <div class="hud-filter-strip">
+            <div class="sidebar-filter-row" id="studio-filter-row"></div>
+          </div>
           <div class="hud-model-carousel" id="studio-model-list"></div>
         </div>
       </div>

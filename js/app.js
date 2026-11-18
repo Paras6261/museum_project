@@ -1,7 +1,7 @@
 import { WINGS, MONUMENTS, ROMAN_NUMERALS } from './monuments.js';
 
 // ══════════════════════════════════════════════════════════════
-// STATE — Real-Life Live Camera AR First · Strictly ZERO GPS!
+// STATE — Minimal Live Camera AR & 3D Viewer · Zero GPS
 // ══════════════════════════════════════════════════════════════
 
 const state = {
@@ -10,14 +10,25 @@ const state = {
   studioOpen: false,
   studioFilter: 'all',        // 'all' | 'india' | 'egypt' | 'rome'
   studioMonumentId: 'taj-mahal',
-  studioMode: 'camera-ar',    // 'camera-ar' (default!) | '3d'
-  interactionMode: 'rotate',  // 'rotate' | 'move' (tap/drag anywhere on camera!)
+  studioMode: 'camera-ar',    // 'camera-ar' | '3d'
+  interactionMode: 'rotate',  // 'rotate' | 'move'
   lightingTheme: 'golden',    // 'golden' | 'parchment' | 'obsidian'
   autoRotate: true,
-  cleanView: false,
-  gyroEnabled: false,
+  uiHidden: false,
+  fullView: false,
+  historyOpen: false,
+  controlsPopOpen: false,
+
+  // Spatial World-Anchor Fix (stays fixed in space when camera moves!)
+  fixedInPlace: false,
+  gyroAvailable: false,
   gyroBaseAlpha: null,
   gyroBaseBeta: null,
+  anchorShiftX: 0,
+  anchorShiftY: 0,
+  opticalTimer: null,
+  prevGrayFrame: null,
+
   arScale: 1.0,
   arOffsetX: 0,
   arOffsetY: 0,
@@ -28,7 +39,6 @@ const state = {
   cameraStream: null,
   cameraActive: false,
   lightMatchTimer: null,
-  drawerCollapsed: false,
   speaking: false,
   mobileHttpsUrl: '',
 };
@@ -51,15 +61,18 @@ const studioViewport = el('studio-viewport');
 const loadingBadge = el('viewer-loading-badge');
 const cameraToast = el('camera-status-toast');
 const cameraPromptCard = el('camera-prompt-card');
-const hudBottom = el('ar-hud-bottom');
+const historyCard = el('monument-history-card');
+const controlsPopover = el('controls-popover');
 const curatorModal = el('curator-modal');
 const mobileQrModal = el('mobile-qr-modal');
 
-// Tiny offscreen canvas for Real-Time Room Lighting Adaptation
-const lightCanvas = document.createElement('canvas');
-lightCanvas.width = 16;
-lightCanvas.height = 16;
-const lightCtx = lightCanvas.getContext('2d', { willReadFrequently: true });
+// Tiny offscreen canvas for Room Lighting Match + Optical Motion Anchor
+const flowW = 48;
+const flowH = 36;
+const flowCanvas = document.createElement('canvas');
+flowCanvas.width = flowW;
+flowCanvas.height = flowH;
+const flowCtx = flowCanvas.getContext('2d', { willReadFrequently: true });
 
 // ══════════════════════════════════════════════════════════════
 // HELPERS
@@ -73,7 +86,7 @@ function getMonumentById(id) {
   return MONUMENTS.find((m) => m.id === id) || MONUMENTS[0];
 }
 
-function showToast(message, durationMs = 4200) {
+function showToast(message, durationMs = 2600) {
   cameraToast.textContent = message;
   cameraToast.classList.add('visible');
   clearTimeout(showToast._t);
@@ -96,7 +109,7 @@ function stopDocent() {
 
 function toggleDocent(monument) {
   if (!('speechSynthesis' in window)) {
-    showToast('Speech narration is not supported in this browser.');
+    showToast('Audio guide not supported in this browser.');
     return;
   }
   if (state.speaking) {
@@ -130,20 +143,19 @@ function updateDocentUI() {
   const footerPlayBtn = el('docent-play-btn');
   if (footerPlayBtn) {
     footerPlayBtn.textContent = state.speaking ? '⏸' : '▶';
-    footerPlayBtn.title = state.speaking ? 'Pause Docent Narration' : 'Play Docent Narration';
   }
   const docentStatus = el('docent-status-label');
   if (docentStatus) {
     docentStatus.textContent = state.speaking ? '🎧 DOCENT GUIDE: SPEAKING' : '🎧 DOCENT GUIDE: ACTIVE';
   }
-  const studioAudioBtn = el('studio-audio-btn');
-  if (studioAudioBtn) {
-    studioAudioBtn.classList.toggle('active', state.speaking);
+  const histAudioBtn = el('history-audio-btn');
+  if (histAudioBtn) {
+    histAudioBtn.textContent = state.speaking ? '⏹ Stop' : '🔊 Listen';
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// RENDER MUSEUM DASHBOARD (EXACT EXHIBITX LAYOUT)
+// RENDER MUSEUM DASHBOARD
 // ══════════════════════════════════════════════════════════════
 
 function renderMuseum() {
@@ -175,14 +187,12 @@ function renderMuseum() {
     `
     )
     .join('');
-
   navLinks.querySelectorAll('.nav-tab').forEach((btn) => {
     btn.addEventListener('click', () => selectWorld(btn.dataset.wing));
   });
 
   el('gallery-title').textContent = wing.worldLabel;
   el('gallery-subtitle').textContent = m.subtitle;
-
   el('card-flag-badge').innerHTML = `
     <span class="flag-badge-flag">${wing.flagEmoji}</span>
     ${wing.worldLabel.toUpperCase()} ARCHIVE • EXHIBIT ${ROMAN_NUMERALS[idx]}/${ROMAN_NUMERALS[worldList.length - 1]}
@@ -292,8 +302,7 @@ function renderMuseum() {
 function selectWorld(worldId) {
   stopDocent();
   state.activeWorld = worldId;
-  const list = getWorldMonuments(worldId);
-  state.activeMonumentId = list[0].id;
+  state.activeMonumentId = getWorldMonuments(worldId)[0].id;
   renderMuseum();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -307,28 +316,251 @@ function selectMonument(monumentId) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// REAL-TIME ROOM LIGHTING ADAPTATION (MATCHES REAL CAMERA LIGHT)
+// NON-OVERLAPPING HISTORY CARD (Opens on Tap Monument or ℹ️)
+// ══════════════════════════════════════════════════════════════
+
+function populateHistoryCard(m) {
+  el('history-era').textContent = m.era;
+  el('history-title').textContent = m.name;
+  el('history-loc').textContent = `📍 ${m.location}`;
+  el('history-height').textContent = m.spec1Value;
+  el('history-built').textContent = m.spec2Value;
+  el('history-status').textContent = m.spec3Value;
+  el('history-desc').textContent = m.desc;
+  el('history-cat').textContent = m.catNum;
+  updateDocentUI();
+}
+
+function setHistoryOpen(open) {
+  state.historyOpen = open;
+  studioViewport.classList.toggle('history-open', open);
+  historyCard.setAttribute('aria-hidden', open ? 'false' : 'true');
+  el('toggle-history-btn').classList.toggle('active', open);
+  if (open) {
+    setControlsPopOpen(false);
+  }
+}
+
+function setControlsPopOpen(open) {
+  state.controlsPopOpen = open;
+  controlsPopover.classList.toggle('open', open);
+  el('toggle-controls-pop-btn').classList.toggle('active', open);
+}
+
+// ══════════════════════════════════════════════════════════════
+// HIDE / SHOW ALL ICONS (👁) & FULL VIEW MODE (⛶)
+// ══════════════════════════════════════════════════════════════
+
+function setUiHidden(hidden) {
+  state.uiHidden = hidden;
+  studioViewport.classList.toggle('ui-hidden', hidden);
+  const btn = el('toggle-hide-ui-btn');
+  btn.classList.toggle('active', hidden);
+  btn.textContent = hidden ? '👁‍🗨' : '👁';
+  btn.title = hidden ? 'Show All Icons' : 'Hide All Icons';
+  if (hidden) {
+    setControlsPopOpen(false);
+  }
+}
+
+async function toggleFullView() {
+  state.fullView = !state.fullView;
+  studioViewport.classList.toggle('full-view-mode', state.fullView);
+  const btn = el('toggle-fullview-btn');
+  btn.classList.toggle('active', state.fullView);
+  btn.textContent = state.fullView ? '🗗' : '⛶';
+  btn.title = state.fullView ? 'Exit Full View' : 'Full View Mode';
+
+  if (state.fullView) {
+    setControlsPopOpen(false);
+    if (studioViewport.requestFullscreen && !document.fullscreenElement) {
+      try {
+        await studioViewport.requestFullscreen();
+      } catch (_) {
+        // CSS full-view still active
+      }
+    }
+  } else if (document.fullscreenElement) {
+    try {
+      await document.exitFullscreen();
+    } catch (_) {}
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// FIX IN ONE PLACE WHEN CAMERA MOVES (📌)
+// - Mobile: 3DoF Gyroscope World-Anchor (Zero GPS!)
+// - Desktop Webcam: Lightweight Optical-Flow Motion Anchor
+// ══════════════════════════════════════════════════════════════
+
+function handleGyroAnchor(e) {
+  if (!state.fixedInPlace || e.alpha == null || e.beta == null) return;
+  state.gyroAvailable = true;
+
+  if (state.gyroBaseAlpha === null) {
+    state.gyroBaseAlpha = e.alpha;
+    state.gyroBaseBeta = e.beta;
+  }
+
+  let dYaw = e.alpha - state.gyroBaseAlpha;
+  if (dYaw > 180) dYaw -= 360;
+  if (dYaw < -180) dYaw += 360;
+  const dPitch = e.beta - state.gyroBaseBeta;
+
+  // Counter-shift monument screen position so it stays anchored to the real room spot!
+  const pxPerDegX = studioViewport.clientWidth / 62;
+  const pxPerDegY = studioViewport.clientHeight / 58;
+  const targetX = Math.max(-680, Math.min(680, dYaw * pxPerDegX));
+  const targetY = Math.max(-440, Math.min(440, dPitch * pxPerDegY));
+
+  state.anchorShiftX += (targetX - state.anchorShiftX) * 0.35;
+  state.anchorShiftY += (targetY - state.anchorShiftY) * 0.35;
+  applyStageTransform();
+
+  // Also subtly match 3D viewing perspective as you pan around the fixed monument
+  const theta = (30 - dYaw * 0.9).toFixed(1);
+  const phi = Math.max(38, Math.min(86, 72 - dPitch * 0.5)).toFixed(1);
+  viewer.cameraOrbit = `${theta}deg ${phi}deg 110%`;
+}
+
+function captureGrayFrame() {
+  if (!state.cameraActive || cameraVideo.readyState < 2) return null;
+  try {
+    flowCtx.drawImage(cameraVideo, 0, 0, flowW, flowH);
+    const data = flowCtx.getImageData(0, 0, flowW, flowH).data;
+    const gray = new Uint8Array(flowW * flowH);
+    let sum = 0;
+    for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+      const g = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+      gray[j] = g;
+      sum += g;
+    }
+    return { gray, avgNorm: sum / (gray.length * 255) };
+  } catch (_) {
+    return null;
+  }
+}
+
+function startOpticalFlowAnchor() {
+  stopOpticalFlowAnchor();
+  state.prevGrayFrame = null;
+  const maxShift = 4; // search radius in 48x36 downsampled pixels
+
+  state.opticalTimer = setInterval(() => {
+    if (!state.fixedInPlace || !state.cameraActive || state.gyroAvailable) return;
+    const cur = captureGrayFrame();
+    if (!cur) return;
+
+    if (!state.prevGrayFrame) {
+      state.prevGrayFrame = cur.gray;
+      return;
+    }
+
+    const prev = state.prevGrayFrame;
+    const curr = cur.gray;
+    let bestDx = 0;
+    let bestDy = 0;
+    let bestErr = Infinity;
+
+    // Fast block-matching SAD across central region to estimate camera pan/tilt
+    for (let dy = -maxShift; dy <= maxShift; dy++) {
+      for (let dx = -maxShift; dx <= maxShift; dx++) {
+        let err = 0;
+        for (let y = 6; y < flowH - 6; y += 2) {
+          const rowA = y * flowW;
+          const rowB = (y + dy) * flowW;
+          for (let x = 6; x < flowW - 6; x += 2) {
+            err += Math.abs(prev[rowA + x] - curr[rowB + x + dx]);
+          }
+        }
+        if (err < bestErr) {
+          bestErr = err;
+          bestDx = dx;
+          bestDy = dy;
+        }
+      }
+    }
+
+    state.prevGrayFrame = curr;
+
+    // Ignore micro-jitter, smoothly translate monument with the real-world background motion
+    if (Math.abs(bestDx) >= 1 || Math.abs(bestDy) >= 1) {
+      const scaleX = (studioViewport.clientWidth / flowW) * 0.85 * (state.mirrored ? -1 : 1);
+      const scaleY = (studioViewport.clientHeight / flowH) * 0.85;
+      state.anchorShiftX = Math.max(-520, Math.min(520, state.anchorShiftX + bestDx * scaleX));
+      state.anchorShiftY = Math.max(-340, Math.min(340, state.anchorShiftY + bestDy * scaleY));
+      applyStageTransform();
+    }
+  }, 55);
+}
+
+function stopOpticalFlowAnchor() {
+  if (state.opticalTimer) {
+    clearInterval(state.opticalTimer);
+    state.opticalTimer = null;
+  }
+  state.prevGrayFrame = null;
+}
+
+async function toggleFixInPlace() {
+  if (state.fixedInPlace) {
+    state.fixedInPlace = false;
+    state.gyroAvailable = false;
+    state.gyroBaseAlpha = null;
+    state.gyroBaseBeta = null;
+    state.anchorShiftX = 0;
+    state.anchorShiftY = 0;
+    window.removeEventListener('deviceorientation', handleGyroAnchor);
+    stopOpticalFlowAnchor();
+    el('toggle-fix-btn').classList.remove('active');
+    el('anchor-status-chip').style.display = 'none';
+    applyStageTransform();
+    showToast('Unfixed');
+    return;
+  }
+
+  // Request iOS motion permission if applicable (Zero GPS)
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      await DeviceOrientationEvent.requestPermission();
+    } catch (_) {}
+  }
+
+  state.fixedInPlace = true;
+  state.gyroAvailable = false;
+  state.gyroBaseAlpha = null;
+  state.gyroBaseBeta = null;
+  state.anchorShiftX = 0;
+  state.anchorShiftY = 0;
+
+  // Pause auto-spin while fixed so the monument stands solidly in place
+  if (state.autoRotate) {
+    state.autoRotate = false;
+    viewer.removeAttribute('auto-rotate');
+    el('toggle-rotate-btn').classList.remove('active');
+  }
+
+  window.addEventListener('deviceorientation', handleGyroAnchor);
+  startOpticalFlowAnchor();
+
+  el('toggle-fix-btn').classList.add('active');
+  el('anchor-status-chip').style.display = 'inline-flex';
+  showToast('📌 Fixed in place — stays anchored as you move the camera');
+}
+
+// ══════════════════════════════════════════════════════════════
+// REAL-TIME ROOM LIGHTING ADAPTATION
 // ══════════════════════════════════════════════════════════════
 
 function startRoomLightMatching() {
   stopRoomLightMatching();
   state.lightMatchTimer = setInterval(() => {
-    if (!state.cameraActive || cameraVideo.readyState < 2 || state.studioMode !== 'camera-ar') return;
-    try {
-      lightCtx.drawImage(cameraVideo, 0, 0, 16, 16);
-      const data = lightCtx.getImageData(0, 0, 16, 16).data;
-      let sumLum = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        sumLum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      }
-      const avgNorm = sumLum / (256 * 255); // 0..1
-      // Map real room brightness smoothly to natural PBR exposure (0.78 to 1.42)
-      const exposure = (0.78 + avgNorm * 0.64).toFixed(2);
-      viewer.setAttribute('exposure', exposure);
-    } catch (_) {
-      // Ignore frame read timing issues
-    }
-  }, 1100);
+    if (!state.cameraActive || state.studioMode !== 'camera-ar') return;
+    const frame = captureGrayFrame();
+    if (!frame) return;
+    const exposure = (0.8 + frame.avgNorm * 0.6).toFixed(2);
+    viewer.setAttribute('exposure', exposure);
+  }, 1200);
 }
 
 function stopRoomLightMatching() {
@@ -339,70 +571,7 @@ function stopRoomLightMatching() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MOBILE GYROSCOPE 3DOF SPATIAL ANCHORING (ZERO GPS!)
-// ══════════════════════════════════════════════════════════════
-
-function handleDeviceOrientation(e) {
-  if (!state.gyroEnabled || state.studioMode !== 'camera-ar') return;
-  if (e.alpha == null || e.beta == null) return;
-
-  if (state.gyroBaseAlpha === null) {
-    state.gyroBaseAlpha = e.alpha;
-    state.gyroBaseBeta = e.beta;
-  }
-
-  // Compute smooth relative yaw & pitch delta as user moves phone around the monument
-  let dYaw = e.alpha - state.gyroBaseAlpha;
-  if (dYaw > 180) dYaw -= 360;
-  if (dYaw < -180) dYaw += 360;
-  const dPitch = Math.max(-28, Math.min(28, (e.beta - state.gyroBaseBeta) * 0.7));
-
-  const theta = (30 - dYaw * 1.15).toFixed(1);
-  const phi = Math.max(35, Math.min(88, 72 - dPitch)).toFixed(1);
-  viewer.cameraOrbit = `${theta}deg ${phi}deg 110%`;
-}
-
-async function toggleGyroAR() {
-  if (state.gyroEnabled) {
-    state.gyroEnabled = false;
-    window.removeEventListener('deviceorientation', handleDeviceOrientation);
-    el('toggle-gyro-btn').classList.remove('active');
-    showToast('Gyroscope AR Lock disabled.', 2200);
-    return;
-  }
-
-  if (typeof DeviceOrientationEvent === 'undefined') {
-    showToast('Gyroscope sensors are available on smartphones & tablets.', 3500);
-    return;
-  }
-
-  try {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const res = await DeviceOrientationEvent.requestPermission();
-      if (res !== 'granted') {
-        showToast('Motion sensor permission denied.', 3200);
-        return;
-      }
-    }
-    state.gyroEnabled = true;
-    state.gyroBaseAlpha = null;
-    state.gyroBaseBeta = null;
-    // Pause auto-rotate so user's phone movement controls the 3D perspective directly
-    if (state.autoRotate) {
-      state.autoRotate = false;
-      viewer.removeAttribute('auto-rotate');
-      el('toggle-rotate-btn').classList.remove('active');
-    }
-    window.addEventListener('deviceorientation', handleDeviceOrientation);
-    el('toggle-gyro-btn').classList.add('active');
-    showToast('🧭 Gyroscope AR Active (No GPS) — Move & tilt your phone to inspect around the monument!', 4200);
-  } catch (err) {
-    showToast('Gyroscope requires a mobile device over HTTPS.', 3500);
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// FULL-SCREEN LIVE CAMERA AR & 3D STUDIO (ZERO LOCATION TRACKING)
+// STUDIO OPEN / CLOSE / MODEL PICKER
 // ══════════════════════════════════════════════════════════════
 
 function openStudio(monumentId, startInCameraAr = true) {
@@ -411,10 +580,13 @@ function openStudio(monumentId, startInCameraAr = true) {
   state.studioFilter = 'all';
   state.arOffsetX = 0;
   state.arOffsetY = 0;
+  state.anchorShiftX = 0;
+  state.anchorShiftY = 0;
   state.arScale = 1.0;
-  state.cleanView = false;
-  studioViewport.classList.remove('clean-ar-view');
-  el('toggle-clean-btn').classList.remove('active');
+
+  setUiHidden(false);
+  setHistoryOpen(false);
+  setControlsPopOpen(false);
   el('ar-scale-slider').value = '100';
   el('ar-elev-slider').value = '0';
 
@@ -430,7 +602,11 @@ function openStudio(monumentId, startInCameraAr = true) {
 function closeStudio() {
   stopCameraAR();
   stopDocent();
-  if (state.gyroEnabled) toggleGyroAR();
+  if (state.fixedInPlace) toggleFixInPlace();
+  if (state.fullView) toggleFullView();
+  setHistoryOpen(false);
+  setControlsPopOpen(false);
+  setUiHidden(false);
   state.studioOpen = false;
   studioOverlay.classList.remove('open');
   document.body.style.overflow = '';
@@ -438,19 +614,12 @@ function closeStudio() {
 }
 
 function renderModelPicker() {
-  const filterCounts = {
-    all: MONUMENTS.length,
-    india: getWorldMonuments('india').length,
-    egypt: getWorldMonuments('egypt').length,
-    rome: getWorldMonuments('rome').length,
-  };
-
   const filterBar = el('studio-filter-row');
   const filterDefs = [
-    { key: 'all', label: `ALL (${filterCounts.all})` },
-    { key: 'india', label: `🇮🇳 INDIA (${filterCounts.india})` },
-    { key: 'egypt', label: `🇪🇬 EGYPT (${filterCounts.egypt})` },
-    { key: 'rome', label: `🇮🇹 ROME (${filterCounts.rome})` },
+    { key: 'all', label: 'All' },
+    { key: 'india', label: '🇮🇳 India' },
+    { key: 'egypt', label: '🇪🇬 Egypt' },
+    { key: 'rome', label: '🇮🇹 Rome' },
   ];
   filterBar.innerHTML = filterDefs
     .map(
@@ -477,15 +646,12 @@ function renderModelPicker() {
   const listEl = el('studio-model-list');
   listEl.innerHTML = filtered
     .map((m) => {
-      const wing = WINGS[m.world];
       const active = m.id === state.studioMonumentId;
       return `
         <button class="model-option-card ${active ? 'active' : ''}" data-model-id="${m.id}">
           <img src="${m.bgImage}" alt="${m.name}" class="model-option-thumb" loading="lazy" />
           <div class="model-option-meta">
-            <span class="model-option-name">${wing.flagEmoji} ${m.name}</span>
-            <span class="model-option-loc">${m.location}</span>
-            <span class="model-option-tag">${m.modelSource}</span>
+            <span class="model-option-name">${m.name}</span>
           </div>
         </button>
       `;
@@ -506,7 +672,7 @@ function loadStudioModel(monumentId) {
   stopDocent();
 
   el('studio-active-name').textContent = `${wing.flagEmoji} ${m.name}`;
-  el('stage-info-era').textContent = `${m.era} • ${m.spec1Value}`;
+  populateHistoryCard(m);
 
   document.querySelectorAll('.model-option-card').forEach((c) => {
     const isAct = c.dataset.modelId === m.id;
@@ -521,14 +687,12 @@ function loadStudioModel(monumentId) {
 
   const currentSrc = viewer.getAttribute('src') || '';
   if (currentSrc === m.modelPath && viewer.loaded) {
-    // Already loaded — never get stuck on loading badge!
     loadingBadge.classList.remove('visible');
   } else {
-    loadingBadge.textContent = `⏳ Loading ${m.name}…`;
+    loadingBadge.textContent = `⏳ ${m.name}…`;
     loadingBadge.classList.add('visible');
     viewer.setAttribute('src', m.modelPath);
 
-    // Safety watcher in case <model-viewer> finishes from cache without re-emitting 'load'
     clearTimeout(loadStudioModel._timer);
     const pollLoaded = (tries = 0) => {
       if (viewer.loaded || tries > 40) {
@@ -545,27 +709,23 @@ function loadStudioModel(monumentId) {
 
 function applyStageTransform() {
   const s = state.arScale;
-  const x = state.arOffsetX;
-  const y = state.arOffsetY;
+  const x = state.arOffsetX + state.anchorShiftX;
+  const y = state.arOffsetY + state.anchorShiftY;
   viewerStage.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
   arReticle.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y + 70}px)) perspective(360px) rotateX(70deg) scale(${Math.max(0.6, Math.min(1.4, s))})`;
   el('scale-val').textContent = `${Math.round(s * 100)}%`;
-  el('elev-val').textContent = `${Math.round(y)}px`;
+  el('elev-val').textContent = `${Math.round(state.arOffsetY)}px`;
 }
 
 function setInteractionMode(mode) {
   state.interactionMode = mode;
-  el('interaction-rotate-btn').classList.toggle('active', mode === 'rotate');
   el('interaction-move-btn').classList.toggle('active', mode === 'move');
   placeLayer.classList.toggle('active', mode === 'move');
-
-  // Show the ground reticle clearly while placing; soften/hide once locked in Rotate mode
   if (state.cameraActive) {
-    arReticle.classList.toggle('active', mode === 'move' && !state.cleanView);
+    arReticle.classList.toggle('active', mode === 'move' && !state.uiHidden && !state.fullView);
   }
-
   if (mode === 'move') {
-    showToast('✋ Place Mode: Tap or drag anywhere on your real desk/floor to place the monument!', 3800);
+    showToast('✋ Drag or tap to position');
   }
 }
 
@@ -582,11 +742,14 @@ function applyViewportTheme() {
     viewer.setAttribute('exposure', state.lightingTheme === 'golden' ? '1.22' : '1.08');
     viewer.setAttribute('shadow-intensity', '1.25');
   }
-
   document.querySelectorAll('[data-theme]').forEach((b) => {
     b.classList.toggle('active', b.dataset.theme === state.lightingTheme);
   });
 }
+
+// ══════════════════════════════════════════════════════════════
+// LIVE CAMERA ENGINE (VIDEO ONLY — ZERO GPS)
+// ══════════════════════════════════════════════════════════════
 
 async function refreshCameraList() {
   try {
@@ -597,35 +760,26 @@ async function refreshCameraList() {
   }
 }
 
-function setCameraBadge(text, isLive = false) {
-  const badge = el('cam-live-badge');
-  if (!badge) return;
-  badge.textContent = text;
-  badge.style.background = isLive ? 'rgba(20, 74, 30, 0.92)' : 'rgba(56, 44, 18, 0.85)';
-  badge.style.borderColor = isLive ? 'rgba(132, 238, 148, 0.7)' : 'rgba(230, 200, 117, 0.55)';
-  badge.style.color = isLive ? '#D4FFD8' : '#F6E6B8';
+function setCamDot(isLive) {
+  const dot = el('cam-status-dot');
+  if (dot) dot.classList.toggle('live', isLive);
 }
 
 async function startCameraAR(specificDeviceId = null) {
   cameraPromptCard.classList.remove('visible');
-  setCameraBadge('🟡 STARTING CAM…', false);
+  setCamDot(false);
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setCameraBadge('⚠ CAM UNAVAILABLE', false);
-    el('camera-prompt-title').textContent = 'Camera Requires HTTPS on Mobile (or Localhost on PC)';
-    el('camera-prompt-desc').innerHTML =
-      'Tap <strong>📲 Phone QR</strong> above to open the secure <strong>HTTPS</strong> link on your phone camera, or open <strong>http://localhost:8080</strong> in Chrome/Edge on your computer.';
+    el('camera-prompt-title').textContent = 'HTTPS Required for Mobile Camera';
+    el('camera-prompt-desc').innerHTML = 'Open over <strong>HTTPS</strong> (Vercel / 📲 QR) or <strong>localhost</strong>.';
     cameraPromptCard.classList.add('visible');
     return;
   }
 
-  // Always release any existing webcam lock FIRST (critical on Windows!)
   stopCameraAR();
 
   let stream = null;
   let lastError = null;
-
-  // Step 1: Acquire camera stream cleanly (video only, zero GPS/audio)
   const attempts = specificDeviceId
     ? [{ video: { deviceId: { exact: specificDeviceId } }, audio: false }]
     : [
@@ -640,51 +794,37 @@ async function startCameraAR(specificDeviceId = null) {
       if (stream) break;
     } catch (err) {
       lastError = err;
-      if (err && (err.name === 'NotAllowedError' || err.name === 'NotReadableError')) {
-        break;
-      }
+      if (err && (err.name === 'NotAllowedError' || err.name === 'NotReadableError')) break;
     }
   }
 
   if (!stream) {
     state.cameraActive = false;
-    setCameraBadge('🔴 CAM OFF', false);
-    const errName = lastError ? lastError.name : 'UnknownError';
-    const errMsg = lastError ? lastError.message : '';
-
-    if (errName === 'NotReadableError' || errName === 'TrackStartError') {
-      el('camera-prompt-title').textContent = 'Camera Is In Use By Another App';
-      el('camera-prompt-desc').innerHTML =
-        'Your webcam is currently locked by another app or browser tab (e.g., Zoom, Meet, Camera app). Close that app and click <strong>Start Live Camera</strong>.';
-    } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
-      el('camera-prompt-title').textContent = 'No Camera Detected on This Device';
-      el('camera-prompt-desc').innerHTML =
-        'No webcam was found. You can still use <strong>🧊 3D Studio</strong> here, or tap <strong>📲 Phone QR</strong> to open Live Camera AR on your smartphone!';
-    } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-      el('camera-prompt-title').textContent = 'Camera Permission Blocked';
-      el('camera-prompt-desc').innerHTML =
-        `Browser blocked camera access (${errName}). Click the <strong>camera/lock icon</strong> in your browser address bar, allow Camera, then click <strong>Start Live Camera</strong>. If using an IDE embedded preview, open <strong>http://localhost:8080</strong> directly in Chrome or Edge.`;
+    setCamDot(false);
+    const errName = lastError ? lastError.name : '';
+    if (errName === 'NotReadableError') {
+      el('camera-prompt-title').textContent = 'Camera Busy';
+      el('camera-prompt-desc').textContent = 'Close other apps using your camera and retry.';
+    } else if (errName === 'NotFoundError') {
+      el('camera-prompt-title').textContent = 'No Camera Found';
+      el('camera-prompt-desc').textContent = 'Switch to 3D View or open on your phone via 📲 QR.';
     } else {
-      el('camera-prompt-title').textContent = 'Could Not Start Camera';
-      el('camera-prompt-desc').innerHTML =
-        `Error: <code>${errName}${errMsg ? ' — ' + errMsg : ''}</code>. Click <strong>Start Live Camera</strong> to retry, or open <strong>http://localhost:8080</strong> in Chrome/Edge.`;
+      el('camera-prompt-title').textContent = 'Camera Permission Needed';
+      el('camera-prompt-desc').textContent = 'Allow camera access in your browser to see monuments live.';
     }
     cameraPromptCard.classList.add('visible');
     return;
   }
 
-  // Step 2: Attach stream to visible <video> element and start decoding frames
   try {
     await attachCameraStream(stream);
     await refreshCameraList();
-  } catch (playErr) {
+  } catch (_) {
     state.cameraStream = stream;
     state.cameraActive = true;
     cameraVideo.classList.add('active');
-    setCameraBadge('🟡 TAP TO RESUME', false);
-    el('camera-prompt-title').textContent = 'Tap to Resume Live Camera Feed';
-    el('camera-prompt-desc').innerHTML =
-      'Camera permission is granted! Tap <strong>Start Live Camera</strong> below to begin streaming your live view.';
+    el('camera-prompt-title').textContent = 'Tap to Start Camera';
+    el('camera-prompt-desc').textContent = 'Camera ready — tap below to resume live view.';
     cameraPromptCard.classList.add('visible');
   }
 }
@@ -694,7 +834,6 @@ async function attachCameraStream(stream) {
   state.cameraActive = true;
   cameraPromptCard.classList.remove('visible');
 
-  // Make <video> visible BEFORE play() so Chromium/Safari immediately render frames
   cameraVideo.setAttribute('playsinline', '');
   cameraVideo.setAttribute('webkit-playsinline', '');
   cameraVideo.playsInline = true;
@@ -709,7 +848,6 @@ async function attachCameraStream(stream) {
   cameraVideo.classList.toggle('mirrored', state.mirrored);
   el('mirror-camera-btn').classList.toggle('active', state.mirrored);
 
-  // Wait for video metadata if not yet ready
   if (cameraVideo.readyState < 1) {
     await new Promise((resolve) => {
       const onMeta = () => {
@@ -722,15 +860,9 @@ async function attachCameraStream(stream) {
   }
 
   await cameraVideo.play();
-
-  const w = cameraVideo.videoWidth || settings.width || 0;
-  const h = cameraVideo.videoHeight || settings.height || 0;
-  const label = (track && track.label ? track.label.split('(')[0].trim() : 'Live Camera').slice(0, 22);
-  setCameraBadge(`🟢 LIVE: ${label}${w ? ` (${w}×${h})` : ''}`, true);
-
-  arReticle.classList.toggle('active', state.interactionMode === 'move' && !state.cleanView);
+  setCamDot(true);
+  arReticle.classList.toggle('active', state.interactionMode === 'move' && !state.uiHidden && !state.fullView);
   startRoomLightMatching();
-  showToast(`📷 Live Camera Active (${w}×${h}) — No GPS! Use ✋ Place or pick any monument below.`, 4200);
 }
 
 function stopCameraAR() {
@@ -744,17 +876,14 @@ function stopCameraAR() {
   cameraVideo.srcObject = null;
   cameraVideo.classList.remove('active');
   arReticle.classList.remove('active');
-  setCameraBadge('⚪ CAM OFF', false);
+  setCamDot(false);
 }
 
 function setStudioMode(mode) {
   state.studioMode = mode;
   el('mode-camera-btn').classList.toggle('active', mode === 'camera-ar');
   el('mode-3d-btn').classList.toggle('active', mode === '3d');
-
   el('flip-camera-btn').style.display = mode === 'camera-ar' ? 'flex' : 'none';
-  el('mirror-camera-btn').style.display = mode === 'camera-ar' ? 'flex' : 'none';
-  el('toggle-gyro-btn').style.display = mode === 'camera-ar' ? 'flex' : 'none';
 
   if (mode === 'camera-ar') {
     applyViewportTheme();
@@ -767,7 +896,7 @@ function setStudioMode(mode) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MOBILE CAMERA HTTPS QR CODE MODAL
+// MOBILE HTTPS QR MODAL
 // ══════════════════════════════════════════════════════════════
 
 async function openMobileQrModal() {
@@ -785,9 +914,7 @@ async function openMobileQrModal() {
         const info = await resp.json();
         if (info.httpsUrl) targetUrl = info.httpsUrl;
       }
-    } catch (_) {
-      // Fallback to current host
-    }
+    } catch (_) {}
   }
 
   state.mobileHttpsUrl = targetUrl;
@@ -799,8 +926,29 @@ async function openMobileQrModal() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// TAP & DRAG TO PLACE MONUMENT ANYWHERE IN CAMERA VIEW
+// GESTURES: TAP 3D MONUMENT -> HISTORY CARD & DRAG-TO-PLACE
 // ══════════════════════════════════════════════════════════════
+
+function setupMonumentTapForHistory() {
+  let downX = 0;
+  let downY = 0;
+  let downTime = 0;
+
+  viewer.addEventListener('pointerdown', (e) => {
+    downX = e.clientX;
+    downY = e.clientY;
+    downTime = Date.now();
+  });
+
+  viewer.addEventListener('pointerup', (e) => {
+    const dist = Math.hypot(e.clientX - downX, e.clientY - downY);
+    const elapsed = Date.now() - downTime;
+    // Distinguish a clean tap/click on the 3D object from an orbit drag!
+    if (dist < 6 && elapsed < 360 && !state.uiHidden) {
+      setHistoryOpen(!state.historyOpen);
+    }
+  });
+}
 
 function setupMovePlaceGestures() {
   let dragging = false;
@@ -847,7 +995,7 @@ function setupMovePlaceGestures() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// CAPTURE LIVE CAMERA AR + 3D MONUMENT PHOTO SNAPSHOT
+// PHOTO SNAPSHOT
 // ══════════════════════════════════════════════════════════════
 
 async function captureARSnapshot() {
@@ -890,33 +1038,21 @@ async function captureARSnapshot() {
     img.onload = () => {
       const sw = w * state.arScale;
       const sh = h * state.arScale;
-      const dx = (w - sw) / 2 + state.arOffsetX * ratioX;
-      const dy = (h - sh) / 2 + state.arOffsetY * ratioY;
+      const dx = (w - sw) / 2 + (state.arOffsetX + state.anchorShiftX) * ratioX;
+      const dy = (h - sh) / 2 + (state.arOffsetY + state.anchorShiftY) * ratioY;
       ctx.drawImage(img, dx, dy, sw, sh);
       URL.revokeObjectURL(imgUrl);
 
       const m = getMonumentById(state.studioMonumentId);
-      ctx.fillStyle = 'rgba(14, 11, 6, 0.78)';
-      ctx.fillRect(28, h - 84, 420, 56);
-      ctx.strokeStyle = '#C5A059';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(28, h - 84, 420, 56);
-      ctx.fillStyle = '#E6C875';
-      ctx.font = 'bold 17px Cinzel, serif';
-      ctx.fillText(`EXHIBITX LIVE AR • ${m.name.toUpperCase()}`, 44, h - 57);
-      ctx.fillStyle = '#F2E8D0';
-      ctx.font = 'italic 13.5px Georgia, serif';
-      ctx.fillText(`${m.location} (${m.era})`, 44, h - 38);
-
       const link = document.createElement('a');
-      link.download = `exhibitx-${m.id}-camera-ar.png`;
+      link.download = `exhibitx-${m.id}-ar.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-      showToast(`📸 Saved Real-Life AR Photo of ${m.name}!`, 3200);
+      showToast(`📸 Saved ${m.name} photo`);
     };
     img.src = imgUrl;
-  } catch (e) {
-    showToast('Wait a moment for the 3D monument to finish loading, then tap Photo again.', 3500);
+  } catch (_) {
+    showToast('Wait for model to load, then tap 📸');
   }
 }
 
@@ -935,19 +1071,17 @@ function init() {
   });
 
   el('nav-brand').addEventListener('click', () => selectWorld('india'));
-
-  // Main golden CTA & Navbar pill -> Open DIRECTLY in Real-Life Live Camera AR!
   el('btn-explore-ar').addEventListener('click', () => openStudio(state.activeMonumentId, true));
   el('nav-open-studio').addEventListener('click', () => openStudio(state.activeMonumentId, true));
 
-  // Curator info modal
+  // Curator modal
   el('nav-curator-btn').addEventListener('click', () => curatorModal.classList.add('open'));
   el('curator-close-btn').addEventListener('click', () => curatorModal.classList.remove('open'));
   curatorModal.addEventListener('click', (e) => {
     if (e.target === curatorModal) curatorModal.classList.remove('open');
   });
 
-  // Mobile Camera QR modal
+  // Mobile QR modal
   el('open-mobile-qr-btn').addEventListener('click', openMobileQrModal);
   el('mobile-qr-close-btn').addEventListener('click', () => mobileQrModal.classList.remove('open'));
   mobileQrModal.addEventListener('click', (e) => {
@@ -961,65 +1095,72 @@ function init() {
     }
   });
 
-  // Audio Docent Triggers
+  // Audio Docent
   el('spec4-audio-btn').addEventListener('click', () => toggleDocent());
   el('docent-play-btn').addEventListener('click', () => toggleDocent());
-  el('studio-audio-btn').addEventListener('click', () => toggleDocent());
+  el('history-audio-btn').addEventListener('click', () => toggleDocent());
 
-  // Studio Navigation & Modes
+  // Minimal Studio Controls
   el('studio-back-btn').addEventListener('click', closeStudio);
   el('mode-camera-btn').addEventListener('click', () => setStudioMode('camera-ar'));
   el('mode-3d-btn').addEventListener('click', () => setStudioMode('3d'));
   el('retry-camera-btn').addEventListener('click', () => startCameraAR());
   el('fallback-3d-btn').addEventListener('click', () => setStudioMode('3d'));
 
-  // Rotate vs Place in Camera
-  el('interaction-rotate-btn').addEventListener('click', () => setInteractionMode('rotate'));
-  el('interaction-move-btn').addEventListener('click', () => setInteractionMode('move'));
+  // Always-visible corner toggles: Hide/Show All Icons (👁) & Full View Mode (⛶)
+  el('toggle-hide-ui-btn').addEventListener('click', () => setUiHidden(!state.uiHidden));
+  el('toggle-fullview-btn').addEventListener('click', toggleFullView);
 
-  // Gyroscope 3DoF Spatial Lock
-  el('toggle-gyro-btn').addEventListener('click', toggleGyroAR);
-
-  // Clean Unobstructed Real-Life AR View Toggle
-  el('toggle-clean-btn').addEventListener('click', (e) => {
-    state.cleanView = !state.cleanView;
-    studioViewport.classList.toggle('clean-ar-view', state.cleanView);
-    e.currentTarget.classList.toggle('active', state.cleanView);
-    if (state.cleanView) {
-      showToast('👁 Clean Real-Life AR View — Tap 👁 again to bring back the monument switcher.', 2800);
+  // Sync fullView if user exits fullscreen with Esc
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && state.fullView) {
+      state.fullView = false;
+      studioViewport.classList.remove('full-view-mode');
+      el('toggle-fullview-btn').classList.remove('active');
+      el('toggle-fullview-btn').textContent = '⛶';
     }
   });
 
-  // Native Phone Floor-Tracked AR (WebXR / ARCore Scene Viewer / iOS Quick Look — Zero GPS)
+  // History & Details Card (non-overlapping)
+  el('toggle-history-btn').addEventListener('click', () => setHistoryOpen(!state.historyOpen));
+  el('hud-info-chip').addEventListener('click', () => setHistoryOpen(!state.historyOpen));
+  el('history-close-btn').addEventListener('click', () => setHistoryOpen(false));
+
+  // Fix in Place when moving camera (📌)
+  el('toggle-fix-btn').addEventListener('click', toggleFixInPlace);
+
+  // Move / Place Toggle (✋)
+  el('interaction-move-btn').addEventListener('click', () => {
+    setInteractionMode(state.interactionMode === 'move' ? 'rotate' : 'move');
+  });
+
+  // Settings Popover (⚙️)
+  el('toggle-controls-pop-btn').addEventListener('click', () => setControlsPopOpen(!state.controlsPopOpen));
+
+  // Native Real Floor AR (WebXR / ARCore / iOS Quick Look)
   el('native-ar-btn').addEventListener('click', () => {
     if (viewer.canActivateAR) {
       viewer.activateAR();
     } else {
-      showToast(
-        'Real Floor AR (ARCore / ARKit) works directly on Android & iOS phones — tap 📲 Phone QR to open on your phone!',
-        5000
-      );
       openMobileQrModal();
     }
   });
 
-  // Auto-Rotate Toggle
+  // Popover controls
   el('toggle-rotate-btn').addEventListener('click', (e) => {
     state.autoRotate = !state.autoRotate;
-    if (state.autoRotate) {
-      viewer.setAttribute('auto-rotate', '');
-    } else {
-      viewer.removeAttribute('auto-rotate');
-    }
+    if (state.autoRotate) viewer.setAttribute('auto-rotate', '');
+    else viewer.removeAttribute('auto-rotate');
     e.currentTarget.classList.toggle('active', state.autoRotate);
   });
 
-  // Reset Camera & Placement
   el('reset-view-btn').addEventListener('click', () => {
     const m = getMonumentById(state.studioMonumentId);
     state.arScale = 1.0;
     state.arOffsetX = 0;
     state.arOffsetY = 0;
+    state.anchorShiftX = 0;
+    state.anchorShiftY = 0;
     state.gyroBaseAlpha = null;
     state.gyroBaseBeta = null;
     el('ar-scale-slider').value = '100';
@@ -1029,7 +1170,6 @@ function init() {
     viewer.fieldOfView = 'auto';
   });
 
-  // Lighting Theme Buttons (for 3D Studio mode)
   document.querySelectorAll('[data-theme]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.lightingTheme = btn.dataset.theme;
@@ -1037,7 +1177,6 @@ function init() {
     });
   });
 
-  // Scale & Elevation Sliders
   el('ar-scale-slider').addEventListener('input', (e) => {
     state.arScale = Number(e.target.value) / 100;
     applyStageTransform();
@@ -1047,67 +1186,48 @@ function init() {
     applyStageTransform();
   });
 
-  // Multi-Camera Switcher (Cycles through all detected webcams / phone rear & front lenses)
   el('flip-camera-btn').addEventListener('click', () => {
     if (state.cameras.length > 1) {
       state.cameraIndex = (state.cameraIndex + 1) % state.cameras.length;
-      const nextCam = state.cameras[state.cameraIndex];
-      startCameraAR(nextCam.deviceId);
-      showToast(`Switched camera: ${nextCam.label || `Camera ${state.cameraIndex + 1}`}`, 2500);
+      startCameraAR(state.cameras[state.cameraIndex].deviceId);
     } else {
       state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
-      if (state.studioMode === 'camera-ar') {
-        startCameraAR();
-      }
+      if (state.studioMode === 'camera-ar') startCameraAR();
     }
   });
 
-  // Mirror Camera Toggle
   el('mirror-camera-btn').addEventListener('click', (e) => {
     state.mirrored = !state.mirrored;
     cameraVideo.classList.toggle('mirrored', state.mirrored);
     e.currentTarget.classList.toggle('active', state.mirrored);
   });
 
-  // Collapse/Expand Bottom Carousel
-  el('toggle-drawer-btn').addEventListener('click', (e) => {
-    state.drawerCollapsed = !state.drawerCollapsed;
-    hudBottom.classList.toggle('collapsed', state.drawerCollapsed);
-    e.currentTarget.textContent = state.drawerCollapsed ? '▴ Choose Model' : '▾ Hide List';
-  });
-
-  // AR Photo Snapshot Button
   el('snapshot-ar-btn').addEventListener('click', captureARSnapshot);
 
-  // Move/Place Touch & Mouse Gestures
+  // Gestures
+  setupMonumentTapForHistory();
   setupMovePlaceGestures();
 
-  viewer.addEventListener('load', () => {
-    loadingBadge.classList.remove('visible');
-  });
+  viewer.addEventListener('load', () => loadingBadge.classList.remove('visible'));
   viewer.addEventListener('model-visibility', (e) => {
-    if (e.detail && e.detail.visible) {
-      loadingBadge.classList.remove('visible');
-    }
+    if (e.detail && e.detail.visible) loadingBadge.classList.remove('visible');
   });
-  viewer.addEventListener('error', (e) => {
+  viewer.addEventListener('error', () => {
     loadingBadge.classList.remove('visible');
-    showToast('Unable to load this 3D model. Check that the local server is running.', 5000);
+    showToast('Could not load 3D model.');
   });
 
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && mobileQrModal.classList.contains('open')) {
-      mobileQrModal.classList.remove('open');
-    } else if (e.key === 'Escape' && state.studioOpen) {
-      closeStudio();
+    if (e.key === 'Escape') {
+      if (mobileQrModal.classList.contains('open')) mobileQrModal.classList.remove('open');
+      else if (state.historyOpen) setHistoryOpen(false);
+      else if (state.controlsPopOpen) setControlsPopOpen(false);
+      else if (state.studioOpen) closeStudio();
     } else if (!state.studioOpen && introEl.classList.contains('hidden')) {
       const worldList = getWorldMonuments(state.activeWorld);
       const idx = worldList.findIndex((m) => m.id === state.activeMonumentId);
-      if (e.key === 'ArrowRight') {
-        selectMonument(worldList[(idx + 1) % worldList.length].id);
-      } else if (e.key === 'ArrowLeft') {
-        selectMonument(worldList[(idx - 1 + worldList.length) % worldList.length].id);
-      }
+      if (e.key === 'ArrowRight') selectMonument(worldList[(idx + 1) % worldList.length].id);
+      else if (e.key === 'ArrowLeft') selectMonument(worldList[(idx - 1 + worldList.length) % worldList.length].id);
     }
   });
 
