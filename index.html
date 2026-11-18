@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ExhibitX — 3D &amp; Markerless AR Museum Tour</title>
+
+    <!-- Classical Museum Typography (Matched to ExhibitX) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Google <model-viewer> (Bundled Locally for Instant Zero-CDN 3D & AR Loading) -->
+    <script type="module" src="./vendor/model-viewer.min.js"></script>
+
+    <link rel="stylesheet" href="./styles/first.css" />
+    <link rel="stylesheet" href="./styles/museum.css" />
+  </head>
+  <body class="intro-active">
+    <!-- ═══════════════════════════════════════════════════════════
+         INTRO SCREEN — Exact ExhibitX "Step Inside History" Landing
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="intro">
+      <div class="intro-bg"></div>
+      <div class="intro-candle-glow"></div>
+
+      <!-- 4 Gold Corner Flourishes -->
+      <div class="corner corner-tl">
+        <svg viewBox="0 0 80 80" fill="none">
+          <path d="M4 76 L4 4 L76 4" stroke="rgba(201,168,76,0.45)" stroke-width="1" />
+          <circle cx="4" cy="4" r="3" fill="rgba(201,168,76,0.55)" />
+        </svg>
+      </div>
+      <div class="corner corner-tr">
+        <svg viewBox="0 0 80 80" fill="none">
+          <path d="M4 76 L4 4 L76 4" stroke="rgba(201,168,76,0.45)" stroke-width="1" />
+          <circle cx="4" cy="4" r="3" fill="rgba(201,168,76,0.55)" />
+        </svg>
+      </div>
+      <div class="corner corner-bl">
+        <svg viewBox="0 0 80 80" fill="none">
+          <path d="M4 76 L4 4 L76 4" stroke="rgba(201,168,76,0.45)" stroke-width="1" />
+          <circle cx="4" cy="4" r="3" fill="rgba(201,168,76,0.55)" />
+        </svg>
+      </div>
+      <div class="corner corner-br">
+        <svg viewBox="0 0 80 80" fill="none">
+          <path d="M4 76 L4 4 L76 4" stroke="rgba(201,168,76,0.45)" stroke-width="1" />
+          <circle cx="4" cy="4" r="3" fill="rgba(201,168,76,0.55)" />
+        </svg>
+      </div>
+
+      <div class="intro-content">
+        <div class="intro-pre">Anno Domini · A Journey Through Time</div>
+
+        <div class="ornament-line">
+          <span class="ornament-symbol">⸻ ✦ ⸻</span>
+        </div>
+
+        <h1 class="intro-title">Step Inside<br />History</h1>
+
+        <div class="ornament-line">
+          <span class="ornament-symbol">⸻ ✦ ⸻</span>
+        </div>
+
+        <p class="intro-tagline">
+          Experience human civilisation through Interactive 3D &amp; Markerless Augmented Reality —
+          Indian heritage, Egyptian wonders &amp; Roman grandeur.
+        </p>
+
+        <div class="intro-privacy-note">
+          🔒 Zero Location Tracking · Choose Any 3D Monument Live in AR
+        </div>
+
+        <button class="btn-wax" id="btn-begin-journey">
+          <div class="btn-wax-bg"></div>
+          <div class="btn-wax-text">
+            <span class="btn-wax-icon">⚔</span>
+            Begin the Journey
+            <span class="btn-wax-icon">⚔</span>
+          </div>
+        </button>
+
+        <div class="intro-stamp">ExhibitX · 3D &amp; AR Museum · Est. MMXXVI</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MUSEUM DASHBOARD — Exact ExhibitX Classical Parchment Layout
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="museum-page" class="museum-page" style="display: none;">
+      <!-- Hero Background Underlay -->
+      <div class="hero-underlay">
+        <img id="hero-underlay-img" src="./assets/taj-mahal-bg.png" alt="Taj Mahal" class="hero-underlay-img" />
+        <div class="hero-underlay-overlay"></div>
+      </div>
+
+      <div class="museum-content">
+        <!-- NAVBAR -->
+        <nav class="museum-nav">
+          <div class="nav-brand" id="nav-brand" title="Return to Indian Heritage">
+            <div class="nav-brand-icon">🏛</div>
+            ExhibitX
+          </div>
+
+          <div class="nav-right">
+            <div class="nav-links" id="nav-wing-links"></div>
+
+            <button class="nav-studio-pill" id="nav-open-studio" title="Open 3D & Markerless AR Model Picker">
+              ✦ 3D / AR MODEL PICKER
+            </button>
+
+            <div class="nav-tools-divider"></div>
+
+            <a
+              href="https://github.com/SamkitJain1812/ExhibitX-AR-Based-Museum-Tour"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="nav-circle-btn"
+              title="Original ExhibitX Reference Repo"
+            >
+              &lt;/&gt;
+            </a>
+
+            <button
+              class="nav-circle-btn nav-avatar-btn"
+              id="nav-curator-btn"
+              aria-label="About ExhibitX"
+              title="Curator & Privacy Info"
+            >
+              ✦
+            </button>
+          </div>
+        </nav>
+
+        <!-- GALLERY HEADER -->
+        <div class="gallery-header">
+          <div class="gallery-pill">❮ VIRTUAL AR IMMERSION GALLERY ❯</div>
+          <h1 class="gallery-title" id="gallery-title">Indian Heritage</h1>
+          <p class="gallery-subtitle" id="gallery-subtitle">
+            An interactive spatial encounter with the timeless monument of eternal devotion
+          </p>
+          <div class="gallery-glyph-divider">
+            <span class="gallery-glyph">🏛</span>
+          </div>
+        </div>
+
+        <!-- ARCHIVAL EXHIBIT CARD -->
+        <div class="card-frame">
+          <div class="bracket bracket-tl"></div>
+          <div class="bracket bracket-tr"></div>
+          <div class="bracket bracket-bl"></div>
+          <div class="bracket bracket-br"></div>
+
+          <!-- Floating Prev / Next Arrows -->
+          <button class="side-nav-arrow arrow-prev" id="btn-prev-exhibit" aria-label="Previous Monument">
+            <span class="arrow-roman" id="arrow-prev-roman">VIII</span>
+            <span class="arrow-sym">‹</span>
+            <span class="arrow-text">PREV</span>
+          </button>
+
+          <button class="side-nav-arrow arrow-next" id="btn-next-exhibit" aria-label="Next Monument">
+            <span class="arrow-roman" id="arrow-next-roman">II</span>
+            <span class="arrow-sym">›</span>
+            <span class="arrow-text">NEXT</span>
+          </button>
+
+          <div class="museum-card">
+            <!-- Header Row -->
+            <div class="card-header-row">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div class="flag-badge" id="card-flag-badge">
+                  <span class="flag-badge-flag">🇮🇳</span>
+                  INDIAN HERITAGE ARCHIVE • EXHIBIT I/VIII
+                </div>
+                <span class="source-badge" id="card-source-badge">ExhibitX Repo GLB</span>
+              </div>
+              <div class="sequence-diamonds" id="sequence-diamonds"></div>
+            </div>
+
+            <!-- 2-Column Grid -->
+            <div class="card-grid">
+              <!-- Left Column -->
+              <div class="col-left">
+                <div class="era-tag" id="monument-era">🗺 1631–1653 CE · MUGHAL EMPIRE</div>
+                <h2 class="monument-name" id="monument-name">Taj Mahal</h2>
+                <p class="monument-location" id="monument-location">
+                  📍 Agra, Uttar Pradesh · Yamuna Riverbank
+                </p>
+                <div class="ornate-line">
+                  <span class="ornate-line-diamond">◆</span>
+                </div>
+                <p class="monument-desc" id="monument-desc"></p>
+                <div class="scan-footer-row">
+                  <span class="scan-fidelity" id="scan-fidelity">
+                    ✅ AUTHENTICATED SPATIAL SCAN • 0.2MM FIDELITY
+                  </span>
+                  <span class="scan-cat" id="scan-cat">Cat. IND-1029</span>
+                </div>
+              </div>
+
+              <!-- Right Column: 4 Spec Cards -->
+              <div class="col-right">
+                <div class="spec-card">
+                  <div class="spec-info">
+                    <span class="spec-icon">📏</span>
+                    <div class="spec-labels">
+                      <span class="spec-label" id="spec1-label">MONUMENT HEIGHT</span>
+                      <span class="spec-value" id="spec1-value">73 Metres</span>
+                    </div>
+                  </div>
+                  <span class="spec-chip" id="spec1-chip">PINNACLE APEX</span>
+                </div>
+
+                <div class="spec-card">
+                  <div class="spec-info">
+                    <span class="spec-icon">🗓</span>
+                    <div class="spec-labels">
+                      <span class="spec-label" id="spec2-label">CONSTRUCTED</span>
+                      <span class="spec-value" id="spec2-value">1631 CE</span>
+                    </div>
+                  </div>
+                  <span class="spec-chip" id="spec2-chip">22 YRS DURATION</span>
+                </div>
+
+                <div class="spec-card">
+                  <div class="spec-info">
+                    <span class="spec-icon">🏆</span>
+                    <div class="spec-labels">
+                      <span class="spec-label" id="spec3-label">CONSERVATION STATUS</span>
+                      <span class="spec-value" id="spec3-value">UNESCO</span>
+                    </div>
+                  </div>
+                  <span class="spec-chip gold" id="spec3-chip">World Heritage</span>
+                </div>
+
+                <div class="spec-card">
+                  <div class="spec-info">
+                    <span class="spec-icon">🔊</span>
+                    <div class="spec-labels">
+                      <span class="spec-label" id="spec4-label">ACOUSTIC RESONANCE</span>
+                      <span class="spec-value" id="spec4-value" style="font-size: 14px;">IN SITU</span>
+                    </div>
+                  </div>
+                  <button class="spec-chip audio" id="spec4-audio-btn">SAMPLE 🔊</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Monument Selector Tabs -->
+            <div class="monument-tabs" id="monument-tabs"></div>
+          </div>
+        </div>
+
+        <!-- GOLDEN AR CTA BUTTON -->
+        <div class="ar-cta-wrapper">
+          <button class="ar-cta-btn" id="btn-explore-ar">
+            <div class="ar-cta-content">
+              <span class="ar-cta-icon">📷</span>
+              OPEN IN LIVE CAMERA AR
+              <span class="ar-cta-icon">⊕</span>
+            </div>
+          </button>
+          <p class="ar-cta-sub">
+            📷 REAL CAMERA LIVE AR &nbsp;•&nbsp; 🔒 NO LOCATION TRACKING &nbsp;•&nbsp; 🏛 CHOOSE ANY OF 16 3D MONUMENTS LIVE
+          </p>
+        </div>
+
+        <hr class="section-rule" />
+
+        <!-- INTERNATIONAL WINGS OF ANTIQUITY -->
+        <div class="wings-section">
+          <div class="wings-header">
+            <div class="wings-pre">INTERNATIONAL WINGS OF ANTIQUITY</div>
+          </div>
+          <div class="wings-grid" id="wings-grid"></div>
+        </div>
+
+        <!-- CLASSICAL MUSEUM FOOTER -->
+        <footer class="museum-footer">
+          <div class="footer-inner">
+            <div class="footer-top-row">
+              <div class="footer-links" id="footer-gallery-links"></div>
+              <div class="docent-control">
+                <span id="docent-status-label">🎧 DOCENT GUIDE: ACTIVE</span>
+                <div class="docent-buttons">
+                  <button class="docent-btn" id="docent-prev-btn" title="Previous Exhibit">⏮</button>
+                  <button class="docent-btn" id="docent-play-btn" title="Play Docent Narration">▶</button>
+                  <button class="docent-btn" id="docent-next-btn" title="Next Exhibit">⏭</button>
+                </div>
+              </div>
+            </div>
+            <div class="footer-bottom-row">
+              <span>Archival Curation &amp; Privacy-First Markerless 3D/AR Interaction (Zero GPS Tracking)</span>
+              <span class="footer-copy">© MMXXVI EXHIBITX CLASSICAL FOUNDATION</span>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         FULL-SCREEN LIVE CAMERA AR & 3D STUDIO (ZERO LOCATION TRACKING!)
+         Shows the real 3D monument directly through your live camera
+         with tap/drag placement & live 16-monument carousel switcher!
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="ar-studio-overlay" class="ar-studio-overlay" role="dialog" aria-modal="true" aria-label="Live Camera AR and 3D Studio">
+      <!-- FULL-SCREEN CAMERA + 3D AR VIEWPORT -->
+      <div class="studio-viewport theme-camera" id="studio-viewport">
+        <!-- Real-Life Live Camera Feed (Video Only — Zero GPS/Location) -->
+        <video id="ar-camera-video" playsinline autoplay muted></video>
+
+        <!-- Subtle AR Ground Target Ring (shown when placing in camera AR) -->
+        <div class="ar-floor-reticle" id="ar-floor-reticle"></div>
+
+        <!-- Interactive 3D Monument Layer (Transparent over Live Camera) -->
+        <div class="model-viewer-stage" id="model-viewer-stage">
+          <model-viewer
+            id="exhibit-viewer"
+            alt="3D Monument Model"
+            camera-controls
+            auto-rotate
+            auto-rotate-delay="1800"
+            rotation-per-second="14deg"
+            shadow-intensity="1.35"
+            shadow-softness="0.85"
+            exposure="1.12"
+            tone-mapping="neutral"
+            ar
+            ar-modes="webxr scene-viewer quick-look"
+            ar-placement="floor"
+            interaction-prompt="none"
+          ></model-viewer>
+        </div>
+
+        <!-- Drag / Tap-to-Place Capture Layer (Active in Move/Place Mode) -->
+        <div id="ar-place-layer" class="ar-place-layer" title="Drag or tap anywhere on camera to place the monument"></div>
+
+        <!-- FLOATING TOP HUD -->
+        <header class="ar-hud-top">
+          <div class="ar-hud-left">
+            <button class="hud-glass-btn" id="studio-back-btn">← GALLERY</button>
+            <div class="hud-monument-pill">
+              <span class="hud-monument-name" id="studio-active-name">🇮🇳 Taj Mahal</span>
+              <span class="hud-monument-sub" id="stage-info-era">1631–1653 CE · MUGHAL EMPIRE</span>
+            </div>
+          </div>
+
+          <div class="ar-hud-center">
+            <button class="hud-mode-btn active" id="mode-camera-btn">📷 Live Camera AR</button>
+            <button class="hud-mode-btn" id="mode-3d-btn">🧊 3D Studio</button>
+            <button class="hud-mode-btn gold-accent" id="native-ar-btn">📱 Real Floor AR</button>
+            <button class="hud-glass-btn" id="open-mobile-qr-btn" title="Open on Mobile Phone Camera via HTTPS QR">📲 Phone QR</button>
+          </div>
+
+          <div class="ar-hud-right">
+            <div class="studio-privacy-pill" id="cam-live-badge" title="Live Camera Status">
+              ⚪ CAM STANDBY
+            </div>
+            <div class="studio-privacy-pill" title="Strictly Camera Only — Zero GPS or Location Tracking">
+              🔒 NO GPS
+            </div>
+          </div>
+        </header>
+
+        <!-- Loading Indicator -->
+        <div class="viewer-loading-badge" id="viewer-loading-badge">
+          ⏳ Loading 3D Monument…
+        </div>
+
+        <!-- Toast / Status Notice -->
+        <div class="camera-status-toast" id="camera-status-toast"></div>
+
+        <!-- Camera Permission Prompt Card (only visible if camera is off/denied in Camera AR mode) -->
+        <div class="camera-prompt-card" id="camera-prompt-card">
+          <div class="camera-prompt-icon">📷</div>
+          <h3 id="camera-prompt-title">Enable Your Camera for Real-Life AR</h3>
+          <p id="camera-prompt-desc">
+            Allow camera access to view the 3D monument live in your real surroundings.
+            <strong>No location or GPS is ever tracked.</strong>
+          </p>
+          <div class="camera-prompt-actions">
+            <button class="hud-mode-btn gold-accent" id="retry-camera-btn">📷 Start Live Camera</button>
+            <button class="hud-glass-btn" id="fallback-3d-btn">🧊 Use 3D Studio Instead</button>
+          </div>
+        </div>
+
+        <!-- FLOATING RIGHT SIDE ACTION RAIL (Rotate vs Place, Gyro, Clean View, Camera, Photo) -->
+        <div class="ar-hud-right-rail">
+          <button class="rail-btn active" id="interaction-rotate-btn" title="Drag to rotate 3D monument 360°">
+            <span>🔄</span>
+            <small>Rotate</small>
+          </button>
+          <button class="rail-btn" id="interaction-move-btn" title="Tap or drag anywhere on camera to place monument in room">
+            <span>✋</span>
+            <small>Place</small>
+          </button>
+          <button class="rail-btn" id="toggle-gyro-btn" title="Use phone gyroscope to look around the monument in real space (No GPS)">
+            <span>🧭</span>
+            <small>Gyro</small>
+          </button>
+          <button class="rail-btn active" id="toggle-rotate-btn" title="Toggle gentle auto-spin">
+            <span>⟳</span>
+            <small>Spin</small>
+          </button>
+          <button class="rail-btn" id="toggle-clean-btn" title="Hide guides & dock for pure real-life camera AR view">
+            <span>👁</span>
+            <small>Clean</small>
+          </button>
+          <button class="rail-btn" id="reset-view-btn" title="Center and reset monument size">
+            <span>⌖</span>
+            <small>Reset</small>
+          </button>
+          <button class="rail-btn" id="flip-camera-btn" title="Switch Rear / Front / USB Camera">
+            <span>🔁</span>
+            <small>Cam</small>
+          </button>
+          <button class="rail-btn" id="mirror-camera-btn" title="Mirror webcam preview">
+            <span>🪞</span>
+            <small>Mirror</small>
+          </button>
+          <button class="rail-btn" id="studio-audio-btn" title="Play Docent Audio Guide">
+            <span>🔊</span>
+            <small>Audio</small>
+          </button>
+          <button class="rail-btn gold" id="snapshot-ar-btn" title="Capture & Save Real-Life AR Photo">
+            <span>📸</span>
+            <small>Photo</small>
+          </button>
+        </div>
+
+        <!-- FLOATING BOTTOM DOCK: Size/Height + Live 16-Monument AR Switcher Carousel -->
+        <div class="ar-hud-bottom" id="ar-hud-bottom">
+          <!-- Compact Quick Controls Strip -->
+          <div class="hud-quick-strip">
+            <div class="hud-sliders">
+              <label class="hud-slider-pill">
+                <span>SIZE</span>
+                <input type="range" id="ar-scale-slider" min="35" max="200" value="100" />
+                <span id="scale-val">100%</span>
+              </label>
+              <label class="hud-slider-pill">
+                <span>HEIGHT</span>
+                <input type="range" id="ar-elev-slider" min="-180" max="180" value="0" />
+                <span id="elev-val">0px</span>
+              </label>
+            </div>
+
+            <!-- Lighting pills (shown only in 3D Studio mode) -->
+            <div class="hud-lighting-group" id="lighting-controls" style="display: none;">
+              <button class="hud-mini-btn active" data-theme="golden">🕯 Golden</button>
+              <button class="hud-mini-btn" data-theme="parchment">☀ Parchment</button>
+              <button class="hud-mini-btn" data-theme="obsidian">🌑 Obsidian</button>
+            </div>
+
+            <div class="hud-picker-header-right">
+              <div class="sidebar-filter-row" id="studio-filter-row"></div>
+              <button class="hud-mini-btn" id="toggle-drawer-btn" title="Hide/Show Monument Picker">▾ Hide List</button>
+            </div>
+          </div>
+
+          <!-- Horizontal Scrollable Monument Picker Carousel -->
+          <div class="hud-model-carousel" id="studio-model-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Camera HTTPS QR Modal -->
+    <div id="mobile-qr-modal" class="curator-modal-backdrop">
+      <div class="curator-modal-card" style="text-align: center;">
+        <h3>📲 Open Real Camera AR on Your Phone</h3>
+        <p style="margin-bottom: 10px;">
+          Mobile browsers require <strong>HTTPS</strong> to access your real rear camera &amp; WebXR floor tracking (zero GPS). Connect your phone to the same Wi-Fi and scan:
+        </p>
+        <div class="qr-box-wrap">
+          <img id="mobile-qr-img" src="" alt="Scan to open Mobile AR" class="mobile-qr-img" />
+          <div class="qr-url-row">
+            <code id="mobile-https-url">https://localhost:8443</code>
+            <button class="hud-mini-btn active" id="copy-https-url-btn">Copy</button>
+          </div>
+        </div>
+        <ul style="text-align: left; margin-top: 14px;">
+          <li><strong>Step 1:</strong> Scan the QR code or open the link on your phone (Chrome / Safari).</li>
+          <li id="mobile-cert-step"><strong>Step 2:</strong> On local Wi-Fi, tap <em>Advanced → Proceed</em> once to trust this PC's local HTTPS certificate.</li>
+          <li><strong>Step 3:</strong> Tap <strong>OPEN IN LIVE CAMERA AR</strong> and allow <strong>Camera only</strong> — or tap <strong>Real Floor AR</strong> to place monuments directly on your floor!</li>
+        </ul>
+        <button class="ar-cta-btn" id="mobile-qr-close-btn" style="max-width: 100%; padding: 11px;">
+          <div class="ar-cta-content" style="font-size: 12px;">CLOSE</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Curator & Privacy Information Modal -->
+    <div id="curator-modal" class="curator-modal-backdrop">
+      <div class="curator-modal-card">
+        <h3>ExhibitX — Markerless 3D &amp; AR Heritage Edition</h3>
+        <p>
+          Inspired by <strong>ExhibitX-AR-Based-Museum-Tour</strong>, redesigned for instant 3D inspection
+          and markerless Augmented Reality with <strong>zero location tracking</strong>.
+        </p>
+        <ul>
+          <li><strong>No GPS / No Location Access:</strong> Your coordinates are never requested or stored.</li>
+          <li><strong>Choose Any Monument Live in AR:</strong> Switch seamlessly across all 16 bundled <code>.glb</code> 3D models.</li>
+          <li><strong>Expanded Indian Heritage Wing:</strong> Taj Mahal, Qutub Minar, Red Fort, Konark Sun Temple (from ExhibitX) + Open-Source India Gate, Great Stupa at Sanchi, Charminar &amp; Gateway of India.</li>
+          <li><strong>Global Antiquities:</strong> All 4 Egyptian Wonders &amp; all 4 Roman Grandeur monuments included with full 3D models.</li>
+        </ul>
+        <button class="ar-cta-btn" id="curator-close-btn" style="max-width: 100%; padding: 11px;">
+          <div class="ar-cta-content" style="font-size: 12px;">RETURN TO EXHIBITION</div>
+        </button>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
